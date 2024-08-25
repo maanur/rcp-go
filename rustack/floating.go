@@ -8,13 +8,16 @@ import (
 type Floating struct {
 	manager   *Manager
 	ID        string `json:"id"`
-	VDC       *Vdc   `json:"vdc,omitempty"`
+	VDC       *Vdc   `json:"vdc"`
 	IpAddress string `json:"ip_address"`
 }
 
 func (m *Manager) GetFloating(id string) (fip *Floating, err error) {
-	path, _ := url.JoinPath("v1/floating", id)
+	path, _ := url.JoinPath("v1/port", id)
 	err = m.Get(path, Defaults(), &fip)
+	if err != nil {
+		return nil, err
+	}
 	fip.manager = m
 	return
 }

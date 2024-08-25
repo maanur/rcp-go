@@ -20,7 +20,7 @@ type Vm struct {
 	UserData    *string       `json:"user_data"`
 	Ports       []*Port       `json:"ports"`
 	Disks       []*Disk       `json:"disks"`
-	Floating    *Port         `json:"floating"`
+	Floating    *Floating     `json:"floating"`
 	Locked      bool          `json:"locked,omitempty"`
 	Tags        []Tag         `json:"tags"`
 	Kubernetes  *struct {
@@ -29,12 +29,29 @@ type Vm struct {
 	} `json:"kubernetes,omitempty"`
 }
 
-func NewVm(name string, cpu int, ram float64, template *Template, metadata []*VmMetadata, userData *string, ports []*Port, disks []*Disk, floating *string) Vm {
-	v := Vm{Name: name, Cpu: cpu, Ram: ram, Power: true, Template: template, Metadata: metadata, UserData: userData, Ports: ports, Disks: disks}
-	if floating != nil {
-		v.Floating = &Port{IpAddress: floating}
+func NewVm(
+	name string,
+	cpu int,
+	ram float64,
+	template *Template,
+	metadata []*VmMetadata,
+	userData *string,
+	ports []*Port,
+	disks []*Disk,
+	floating *Floating,
+) Vm {
+	return Vm{
+		Name:     name,
+		Cpu:      cpu,
+		Ram:      ram,
+		Power:    true,
+		Template: template,
+		Metadata: metadata,
+		UserData: userData,
+		Ports:    ports,
+		Disks:    disks,
+		Floating: floating,
 	}
-	return v
 }
 
 func (m *Manager) GetVms(extraArgs ...Arguments) (vms []*Vm, err error) {
@@ -161,6 +178,38 @@ func (v *Vm) DisconnectPort(port *Port) error {
 	return nil
 }
 
+func (v *Vm) ConnectFloating(fip *Floating) error {
+	path := fmt.Sprintf("v1/port/%s", fip.ID)
+	args := struct {
+		VM string
+	}{
+		VM: v.ID,
+	}
+	err := v.manager.Request("PUT", path, args, fip)
+	if err != nil {
+		return err
+	}
+	v.Floating = fip
+	return nil
+}
+
+func (v *Vm) DisconnectFloating() error {
+	if v.Floating == nil {
+		return nil
+	}
+	if v.Floating.ID == "" {
+		return fmt.Errorf("failed to disconnect Floating IP with absent ID from VM %s", v.ID)
+	}
+	path := fmt.Sprintf("v1/port/%s/disconnect", v.Floating.ID)
+	err := v.manager.Request("PATCH", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	v.Floating = nil
+	return nil
+
+}
+
 func (v *Vm) Update() error {
 	path, _ := url.JoinPath("v1/vm", v.ID)
 	args := &struct {
@@ -169,7 +218,7 @@ func (v *Vm) Update() error {
 		Cpu         int      `json:"cpu"`
 		Ram         float64  `json:"ram"`
 		HotAdd      bool     `json:"hotadd_feature"`
-		Floating    *string  `json:"floating"`
+		Floating    string   `json:"floating,omitempty"`
 		Tags        []string `json:"tags"`
 	}{
 		Name:        v.Name,
@@ -177,13 +226,13 @@ func (v *Vm) Update() error {
 		Cpu:         v.Cpu,
 		Ram:         v.Ram,
 		HotAdd:      v.HotAdd,
-		Floating:    nil,
+		Floating:    "",
 		Tags:        convertTagsToNames(v.Tags),
 	}
 
 	if v.Floating != nil {
 		if v.Floating.ID != "" {
-			args.Floating = &v.Floating.ID
+			args.Floating = v.Floating.ID
 		} else {
 			args.Floating = v.Floating.IpAddress
 		}

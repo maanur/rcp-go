@@ -221,7 +221,7 @@ func (v *Vdc) CreateVm(vm *Vm) error {
 		if vm.Floating.ID != "" {
 			args.Floating = &vm.Floating.ID
 		} else {
-			args.Floating = vm.Floating.IpAddress
+			args.Floating = &vm.Floating.IpAddress
 		}
 	}
 
